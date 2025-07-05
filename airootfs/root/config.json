@@ -1,0 +1,59 @@
+{
+  "archinstall-language": "English",
+  "audio_config": {
+    "audio": "pipewire"
+  },
+  "bootloader": "Systemd-boot",
+  "custom_commands": [],
+  "hostname": "archlinux",
+  "kernels": ["linux"],
+  "locale_config": {
+    "kb_layout": "de",
+    "sys_enc": "UTF-8",
+    "sys_lang": "en_US.UTF-8"
+  },
+  "mirror_config": {
+    "custom_repositories": [
+      {
+        "name": "repo",
+        "sign_check": "Optional",
+        "sign_option": "TrustAll",
+        "url": "https://repo.heili.eu/$arch"
+      }
+    ],
+    "custom_servers": [],
+    "mirror_regions": {},
+    "optional_repositories": []
+  },
+  "network_config": {
+    "type": "nm"
+  },
+  "ntp": true,
+  "packages": [],
+  "parallel_downloads": 0,
+  "profile_config": {
+    "gfx_driver": "All open-source",
+    "greeter": "gdm",
+    "profile": {
+      "custom_settings": {
+        "GNOME": {}
+      },
+      "details": ["GNOME"],
+      "main": "Desktop"
+    }
+  },
+  "services": [],
+  "swap": false,
+  "timezone": "UTC",
+  "version": null,
+  "root_enc_password": "$y$j9T$2/bW4a3ODn6HMJp.uZHSw1$6uT9GW6LtOEoD5XhBx3oiChI7UjbdE9WFx4NGVAh6U5",
+  "users": [
+    {
+      "enc_password": "$y$j9T$GnliJW9abKgO9Zp92eEah1$0XAWWdfD3syw2tG54Oi/NtqiW60k8hvpqhcgQve2ft2",
+      "groups": [],
+      "sudo": true,
+      "username": "lukas"
+    }
+  ],
+  "additional_packages": ["firefox", "git"]
+}

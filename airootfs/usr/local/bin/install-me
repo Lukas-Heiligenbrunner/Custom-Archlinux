@@ -1,0 +1,7 @@
+#!/bin/bash
+set -e
+
+echo "Welcome to your custom Arch installer."
+read -rp "Enter the disk (e.g. /dev/sda): " DISK
+
+archinstall --config /root/config.json --disk "$DISK"
