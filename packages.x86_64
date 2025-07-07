@@ -13,3 +13,7 @@ virtualbox-guest-utils-nox
 
 git
 archinstall
+edk2-shell
+nano
+vim
+util-linux
