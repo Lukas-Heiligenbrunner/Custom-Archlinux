@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: dind
+    runs-on: ubuntu-latest
     container:
       image: archlinux:latest
 
