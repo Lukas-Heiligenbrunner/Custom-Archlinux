@@ -1,4 +1,5 @@
 #!/bin/bash
-#
-#
-sudo mkarchiso -v -w work -o out.iso .
+
+rm -R work
+rm -R out
+mkarchiso -v -w work -o out .

@@ -1,81 +1,77 @@
 from pathlib import Path
+from typing import override
 
 from archinstall.default_profiles.desktops.gnome import GnomeProfile
+from archinstall.default_profiles.profile import ProfileType, GreeterType
+from archinstall.default_profiles.xorg import XorgProfile
 from archinstall.lib.disk.device_handler import device_handler
 from archinstall.lib.disk.filesystem import FilesystemHandler
 from archinstall.lib.installer import Installer
+from archinstall.lib.models import Repository, LocaleConfiguration, Bootloader, CustomRepository, MirrorConfiguration
 from archinstall.lib.models.device_model import (
-	DeviceModification,
-	DiskLayoutConfiguration,
-	DiskLayoutType,
-	FilesystemType,
-	ModificationStatus,
-	PartitionFlag,
-	PartitionModification,
-	PartitionType,
-	Size,
-	Unit,
+    DeviceModification,
+    DiskLayoutConfiguration,
+    DiskLayoutType,
+    FilesystemType,
+    ModificationStatus,
+    PartitionFlag,
+    PartitionModification,
+    PartitionType,
+    Size,
+    Unit,
 )
+from archinstall.lib.models.mirrors import SignCheck, SignOption
 from archinstall.lib.models.profile_model import ProfileConfiguration
 from archinstall.lib.models.users import Password, User
 from archinstall.lib.profile.profiles_handler import profile_handler
 
 # we're creating a new ext4 filesystem installation
 fs_type = FilesystemType('ext4')
-device_path = Path('/dev/sda')
+device_path = Path('/dev/vda')
 
 # get the physical disk device
 device = device_handler.get_device(device_path)
 
 if not device:
-	raise ValueError('No device found for given path')
+    raise ValueError('No device found for given path')
 
 # create a new modification for the specific device
 device_modification = DeviceModification(device, wipe=True)
 
 start_boot = Size(1, Unit.MiB, device.device_info.sector_size)
-length_boot = Size(512, Unit.MiB, device.device_info.sector_size)
+length_boot = Size(1024, Unit.MiB, device.device_info.sector_size)
 start_root = start_boot + length_boot
-length_root = device.device_info.total_size - start_root
+length_root = device.device_info.total_size - start_root - start_boot # todo -start_boot shouldnt be required actually
 
 # create a new boot partition
 boot_partition = PartitionModification(
-	status=ModificationStatus.Create,
-	type=PartitionType.Primary,
-	start=start_boot,
-	length=length_boot,
-	mountpoint=Path('/boot'),
-	fs_type=FilesystemType.Fat32,
-	flags=[PartitionFlag.BOOT],
+    status=ModificationStatus.Create,
+    type=PartitionType.Primary,
+    start=start_boot,
+    length=length_boot,
+    mountpoint=Path('/boot'),
+    fs_type=FilesystemType.Fat32,
+    flags=[PartitionFlag.ESP],
+    #flags=[PartitionFlag.BOOT], # for mbr
 )
 
 root_partition = PartitionModification(
-	status=ModificationStatus.Create,
-	type=PartitionType.Primary,
-	start=start_root,
-	length=length_root,
-	mountpoint=None,
-	fs_type=fs_type,
-	mount_options=[],
+    status=ModificationStatus.Create,
+    type=PartitionType.Primary,
+    start=start_root,
+    length=length_root,
+    mountpoint=Path('/'),
+    fs_type=fs_type,
+    mount_options=[],
 )
 
 device_modification.add_partition(boot_partition)
 device_modification.add_partition(root_partition)
 
 disk_config = DiskLayoutConfiguration(
-	config_type=DiskLayoutType.Default,
-	device_modifications=[device_modification],
+    config_type=DiskLayoutType.Default,
+    device_modifications=[device_modification],
 )
-
-# disk encryption configuration (Optional)
-#disk_encryption = DiskEncryption(
-#	encryption_password=Password(plaintext='enc_password'),
-#	encryption_type=EncryptionType.Luks,
-##	partitions=[home_partition],
-#	hsm_device=None,
-#)
-
-#disk_config.disk_encryption = disk_encryption
 
 # initiate file handler with the disk config and the optional disk encryption config
 fs_handler = FilesystemHandler(disk_config)
@@ -86,19 +82,124 @@ fs_handler.perform_filesystem_operations(show_countdown=False)
 
 mountpoint = Path('/tmp')
 
+custom_repo = CustomRepository(
+    name='repo',
+    url='https://repo.heili.eu/$arch',
+    sign_check=SignCheck.Optional,
+    sign_option=SignOption.TrustAll
+)
+
+
+class CustomProfile(XorgProfile):
+    def __init__(self):
+        super().__init__('GNOME', ProfileType.DesktopEnv)
+
+    def install(self, install_session:'Installer') -> None:
+        super().install(install_session)
+        install_session.add_additional_packages(self.packages)
+
+        self.post_install(install_session)
+
+    def post_install(self, install_session:'Installer') -> None:
+        super().post_install(install_session)
+        installation.enable_service('NetworkManager.service')
+        installation.enable_service('gdm.service')
+
+        # set git name+email
+        installation.arch_chroot(f'git config --global user.email "lukas.heiligenbrunner@gmail.com"','lukas')
+        installation.arch_chroot(f'git config --global user.name "Lukas Heiligenbrunner"','lukas')
+        # enable dark style
+        installation.arch_chroot(f'gsettings set org.gnome.desktop.interface color-scheme "prefer-dark"','lukas')
+        # setup rust toolchain
+        installation.arch_chroot(f'rustup default stable','lukas')
+
+    @property
+    @override
+    def packages(self) -> list[str]:
+        return [
+           'gnome-tweaks', self.default_greeter_type.value,
+
+            # default gnome applications with some removed
+            'baobab', # 	A graphical directory tree analyzer', #
+            'decibels', # 	Audio player for GNOME', #
+            'evince', # 	Document viewer (PDF, PostScript, XPS, djvu, dvi, tiff, cbr, cbz, cb7, cbt)', # 	
+            'gdm', # 	Display manager and login screen', #
+            'gnome-backgrounds', # 	Background images and data for GNOME', # 	
+            'gnome-calculator', # 	GNOME Scientific calculator', #
+            'gnome-calendar', # 	Simple and beautiful calendar application designed to perfectly fit the GNOME desktop', # 	
+            'gnome-characters', # 	A character map application', # 	
+            'gnome-clocks', # 	Clocks applications for GNOME', # 	
+            'gnome-color-manager', # 	GNOME Color Profile Tools', # 	
+            'gnome-connections', # 	Remote desktop client for the GNOME desktop environment', # 	
+            'gnome-console', # 	A simple user-friendly terminal emulator for the GNOME desktop', # 	
+            'gnome-contacts', # 	Contacts Manager for GNOME', #
+            'gnome-control-center', # 	GNOME's main interface to configure various aspects of the desktop', # 	
+            'gnome-disk-utility', # 	Disk Management Utility for GNOME', # 	
+            'gnome-font-viewer', # 	A font viewer utility for GNOME', # 	
+            'gnome-keyring', # 	Stores passwords and encryption keys', # 	
+            'gnome-logs', # 	A log viewer for the systemd journal', #
+            'gnome-maps', # 	Find places around the world', # 	
+            'gnome-menus', # 	GNOME menu specifications', #
+            'gnome-remote-desktop', # 	GNOME Remote Desktop server', # 	
+            'gnome-session', # 	The GNOME Session Handler', #
+            'gnome-settings-daemon', # 	GNOME Settings Daemon', #
+            'gnome-shell', # 	Next generation desktop shell', #
+            'gnome-shell-extensions', # 	Extensions for GNOME shell, including classic mode', #
+            'gnome-text-editor', # 	A simple text editor for the GNOME desktop', #
+            'gnome-user-docs', # 	User documentation for GNOME', # 	
+            'gnome-user-share', # 	Easy to use user-level file sharing for GNOME', # 	
+            'gnome-weather', # 	Access current weather conditions and forecasts', # 	
+            'grilo-plugins', # 	A collection of plugins for the Grilo framework', # 	
+            'gvfs', # 	Virtual filesystem implementation for GIO', # 	
+            'gvfs-afc', # 	Virtual filesystem implementation for GIO - AFC backend (Apple mobile devices)', # 	
+            'gvfs-dnssd', # 	Virtual filesystem implementation for GIO - DNS-SD and WebDAV backend (macOS file sharing)', # 	
+            'gvfs-goa', # 	Virtual filesystem implementation for GIO - Gnome Online Accounts backend (e.g. OwnCloud)', # 	
+            'gvfs-google', # 	Virtual filesystem implementation for GIO - Google Drive backend', # 	
+            'gvfs-gphoto2', # 	Virtual filesystem implementation for GIO - gphoto2 backend (PTP camera, MTP media player)', # 	
+            'gvfs-mtp', # 	Virtual filesystem implementation for GIO - MTP backend (Android, media player)', # 	
+            'gvfs-nfs', # 	Virtual filesystem implementation for GIO - NFS backend', # 	
+            'gvfs-onedrive', # 	Virtual filesystem implementation for GIO - Microsoft OneDrive backend', # 	
+            'gvfs-smb', # 	Virtual filesystem implementation for GIO - SMB/CIFS backend (Windows file sharing)', # 	
+            'gvfs-wsdd', # 	Virtual filesystem implementation for GIO - Web Services Dynamic Discovery backend (Windows discovery)', # 	
+            'loupe', # 	A simple image viewer for GNOME', #
+            'nautilus', # 	Default file manager for GNOME', #
+            'orca', # 	Screen reader for individuals who are blind or visually impaired', # 	
+            'rygel', # 	UPnP AV MediaServer and MediaRenderer', #
+            'simple-scan', # 	Simple scanning utility', # 	
+            'snapshot', # 	Take pictures and videos', #
+            'sushi', # 	A quick previewer for Nautilus', # 	
+            'tecla', # 	Keyboard layout viewer', # 	
+            'totem', # 	Movie player for the GNOME desktop based on GStreamer', #
+            'xdg-desktop-portal-gnome', # 	Backend implementation for xdg-desktop-portal for the GNOME desktop environment', # 	
+            'xdg-user-dirs-gtk', # 	Creates user dirs and asks to relocalize them', #
+
+            # custom additional ones
+           'nano','wget','git', 'firefox', 'vlc'
+           'zed','resources',
+           'rustup','rustrover','rustrover-jre',
+           'networkmanager'
+        ]
+
+    @property
+    @override
+    def default_greeter_type(self) -> GreeterType:
+        return GreeterType.Gdm
+
+
 with Installer(
-	mountpoint,
-	disk_config,
-	kernels=['linux'],
+        mountpoint,
+        disk_config,
+        kernels=['linux'],
 ) as installation:
-	installation.mount_ordered_layout()
-	installation.minimal_installation(hostname='minimal-arch')
-	installation.add_additional_packages(['nano', 'wget', 'git'])
+    installation.mount_ordered_layout()
+    installation.minimal_installation(hostname='arch-lukas', optional_repositories=[Repository.Multilib],
+                                      locale_config=LocaleConfiguration('de','en_US.UTF-8','UTF-8'))
+    installation.set_mirrors(MirrorConfiguration(custom_repositories=[custom_repo]))
+    installation.add_bootloader(Bootloader.Systemd)
 
-# Optionally, install a profile of choice.
-# In this case, we install a minimal profile that is empty
-profile_config = ProfileConfiguration(GnomeProfile())
-profile_handler.install_profile_config(installation, profile_config)
+    user = User('lukas', Password(plaintext='1qayxsw2'), True)
+    installation.create_users(user)
+    installation.set_user_password(User('root', Password(plaintext='root'), False))
 
-user = User('lukas', Password(plaintext='1qayxsw2'), True)
-installation.create_users(user)
+    profile_config = ProfileConfiguration(CustomProfile())
+    profile_handler.install_profile_config(installation, profile_config)
