@@ -1,0 +1,35 @@
+name: Build Arch ISO
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Sy --noconfirm archiso git
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Build ISO
+        run: |
+          mkarchiso -v -w work -o out .
+
+      - name: Delete old artifact
+        uses: juliangruber/delete-artifact@v2
+        with:
+          name: archlinux-custom-iso
+
+      - name: Upload ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: archlinux-custom-iso
+          path: out/*.iso
