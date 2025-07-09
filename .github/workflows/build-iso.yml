@@ -1,4 +1,4 @@
-name: Build Arch ISO
+name: Build Arch ISOo
 
 on:
   push:
