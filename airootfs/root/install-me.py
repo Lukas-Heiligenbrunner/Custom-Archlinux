@@ -108,10 +108,24 @@ class CustomProfile(XorgProfile):
         # set git name+email
         installation.arch_chroot(f'git config --global user.email "lukas.heiligenbrunner@gmail.com"','lukas')
         installation.arch_chroot(f'git config --global user.name "Lukas Heiligenbrunner"','lukas')
-        # enable dark style
-        installation.arch_chroot(f'gsettings set org.gnome.desktop.interface color-scheme "prefer-dark"','lukas')
         # setup rust toolchain
         installation.arch_chroot(f'rustup default stable','lukas')
+
+        local_background_path = Path('/root/rsc/background-hogwartslegacy.png')  # Adjust path
+        chroot_background_path = Path(f"{installation.mountpoint}/home/lukas/Pictures/background.png")
+        chroot_background_path.parent.mkdir(parents=True, exist_ok=True)
+        chroot_background_path.write_bytes(local_background_path.read_bytes())
+        installation.arch_chroot(f'chown -R lukas:lukas /home/lukas/Pictures', 'root')
+
+        # prepare gsettings commands
+        gsettings_cmds = [
+            'gsettings set org.gnome.desktop.background picture-uri "file:///home/lukas/Pictures/background.jpg"',
+            'gsettings set org.gnome.desktop.background picture-uri-dark "file:///home/lukas/Pictures/background.jpg"',
+            'gsettings set org.gnome.desktop.interface color-scheme "prefer-dark"'
+        ]
+
+        for cmd in gsettings_cmds:
+            installation.arch_chroot(f'dbus-launch --exit-with-session {cmd}', 'lukas')
 
     @property
     @override
@@ -174,10 +188,11 @@ class CustomProfile(XorgProfile):
             'xdg-user-dirs-gtk', # 	Creates user dirs and asks to relocalize them', #
 
             # custom additional ones
-           'nano','wget','git', 'firefox', 'vlc'
-           'zed','resources',
-           'rustup','rustrover','rustrover-jre',
-           'networkmanager'
+           'nano','wget','git', 'firefox', 'vlc', 'gnome-boxes', 'openscad', 'prusa-slicer', 'gimp',
+           'zed','resources', 'steam','discord', 'blender', 'obs-studio', 'kicad','less',
+           'rustup','rustrover','rustrover-jre','intellij-idea-ultimate-edition',
+           'networkmanager',
+            # todo sound stack
         ]
 
     @property
