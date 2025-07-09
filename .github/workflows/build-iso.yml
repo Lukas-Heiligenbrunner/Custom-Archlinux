@@ -24,9 +24,10 @@ jobs:
           mkarchiso -v -w work -o out .
 
       - name: Delete old artifact
-        uses: juliangruber/delete-artifact@v2
+        uses: geekyeggo/delete-artifact@v5
         with:
           name: archlinux-custom-iso
+          failOnError: false
 
       - name: Upload ISO
         uses: actions/upload-artifact@v4
