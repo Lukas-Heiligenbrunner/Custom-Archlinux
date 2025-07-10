@@ -168,11 +168,11 @@ class CustomProfile(XorgProfile):
             'gvfs-afc', # 	Virtual filesystem implementation for GIO - AFC backend (Apple mobile devices)', # 	
             'gvfs-dnssd', # 	Virtual filesystem implementation for GIO - DNS-SD and WebDAV backend (macOS file sharing)', # 	
             'gvfs-goa', # 	Virtual filesystem implementation for GIO - Gnome Online Accounts backend (e.g. OwnCloud)', # 	
-            'gvfs-google', # 	Virtual filesystem implementation for GIO - Google Drive backend', # 	
-            'gvfs-gphoto2', # 	Virtual filesystem implementation for GIO - gphoto2 backend (PTP camera, MTP media player)', # 	
+            #'gvfs-google', # 	Virtual filesystem implementation for GIO - Google Drive backend', #
+            #'gvfs-gphoto2', # 	Virtual filesystem implementation for GIO - gphoto2 backend (PTP camera, MTP media player)', #
             'gvfs-mtp', # 	Virtual filesystem implementation for GIO - MTP backend (Android, media player)', # 	
             'gvfs-nfs', # 	Virtual filesystem implementation for GIO - NFS backend', # 	
-            'gvfs-onedrive', # 	Virtual filesystem implementation for GIO - Microsoft OneDrive backend', # 	
+            #'gvfs-onedrive', # 	Virtual filesystem implementation for GIO - Microsoft OneDrive backend', #
             'gvfs-smb', # 	Virtual filesystem implementation for GIO - SMB/CIFS backend (Windows file sharing)', # 	
             'gvfs-wsdd', # 	Virtual filesystem implementation for GIO - Web Services Dynamic Discovery backend (Windows discovery)', # 	
             'loupe', # 	A simple image viewer for GNOME', #
@@ -191,7 +191,7 @@ class CustomProfile(XorgProfile):
            'nano','wget','git', 'firefox', 'vlc', 'gnome-boxes', 'openscad', 'prusa-slicer', 'gimp',
            'zed','resources', 'steam','discord', 'blender', 'obs-studio', 'kicad','less',
            'rustup','rustrover','rustrover-jre','intellij-idea-ultimate-edition',
-           'networkmanager',
+           'networkmanager','lib32-mesa','mesa','vulkan-radeon','lib32-vulkan-radeon'
             # todo sound stack
         ]
 
