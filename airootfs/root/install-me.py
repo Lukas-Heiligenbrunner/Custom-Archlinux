@@ -191,7 +191,8 @@ class CustomProfile(XorgProfile):
            'nano','wget','git', 'firefox', 'vlc', 'gnome-boxes', 'openscad', 'prusa-slicer', 'gimp',
            'zed','resources', 'steam','discord', 'blender', 'obs-studio', 'kicad','less',
            'rustup','rustrover','rustrover-jre','intellij-idea-ultimate-edition',
-           'networkmanager','lib32-mesa','mesa','vulkan-radeon','lib32-vulkan-radeon'
+           'networkmanager','lib32-mesa','mesa','vulkan-radeon','lib32-vulkan-radeon',
+            'htop', 'pycharm-professional', 'mangohud', 'lib32-mangohud', 'pipewire', 'pipewire-audio', 'wireplumber',
             # todo sound stack
         ]
 
