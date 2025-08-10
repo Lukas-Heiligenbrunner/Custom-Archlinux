@@ -1,36 +1,44 @@
-name: Build Arch ISOo
-
+name: Build Arch ISO
 on:
+  workflow_dispatch:
   push:
-    branches:
-      - master
+    branches: [ master ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
-
+    timeout-minutes: 120
     steps:
-      - name: Install dependencies
+      - uses: actions/checkout@v4
+
+      - name: Prepare dirs
         run: |
-          pacman -Sy --noconfirm archiso git nodejs
+          mkdir -p .pkgcache work out
 
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Build ISO
-        run: |
-          mkarchiso -v -w work -o out .
-
-      - name: Delete old artifact
-        uses: geekyeggo/delete-artifact@v5
+      - name: Cache pacman packages
+        uses: actions/cache@v4
         with:
-          name: archlinux-custom-iso
-          failOnError: false
+          path: .pkgcache
+          key: pacman-cache-v1
 
-      - name: Upload ISO
+      - name: Build ISO in privileged Arch container
+        run: |
+          docker run --privileged --rm \
+            -v "${{ github.workspace }}:/repo" \
+            -v "${{ github.workspace }}/.pkgcache:/var/cache/pacman/pkg" \
+            -v "${{ github.workspace }}/work:/work" \
+            -v "${{ github.workspace }}/out:/out" \
+            archlinux:latest \
+            bash -lc '
+              set -euxo pipefail
+              sed -i "s/^#ParallelDownloads.*/ParallelDownloads = 10/" /etc/pacman.conf || true
+              pacman -Syu --noconfirm archiso
+              cd /repo/path/to/your/archiso/profile
+              mkarchiso -v -w /work -o /out .
+            '
+
+      - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:
-          name: archlinux-custom-iso
+          name: archlinux-iso
           path: out/*.iso
