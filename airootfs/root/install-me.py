@@ -122,6 +122,23 @@ class CustomProfile(XorgProfile):
             'gsettings set org.gnome.desktop.background picture-uri "file:///home/lukas/Pictures/background.jpg"',
             'gsettings set org.gnome.desktop.background picture-uri-dark "file:///home/lukas/Pictures/background.jpg"',
             'gsettings set org.gnome.desktop.interface color-scheme "prefer-dark"'
+
+            # Screenshot UI: keep Print and add Ctrl+F12
+            'gsettings set org.gnome.shell.keybindings show-screenshot-ui "[\'<Ctrl>F12\']"',
+
+            # Enable extensions globally
+            'gsettings set org.gnome.shell disable-user-extensions false',
+
+            # Show seconds in top bar clock
+            'gsettings set org.gnome.desktop.interface clock-show-seconds true',
+
+            # Disable automatic suspend (on AC and battery)
+            "gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'",
+            "gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type 'nothing'",
+
+            "gnome-extensions enable tiling-assistant@leleat-on-github",
+
+            "gsettings set org.gnome.shell.extensions.tiling-assistant enable-tiling-popup false"
         ]
 
         for cmd in gsettings_cmds:
@@ -136,7 +153,7 @@ class CustomProfile(XorgProfile):
             # default gnome applications with some removed
             'baobab', # 	A graphical directory tree analyzer', #
             'decibels', # 	Audio player for GNOME', #
-            'evince', # 	Document viewer (PDF, PostScript, XPS, djvu, dvi, tiff, cbr, cbz, cb7, cbt)', # 	
+            'papers',
             'gdm', # 	Display manager and login screen', #
             'gnome-backgrounds', # 	Background images and data for GNOME', # 	
             'gnome-calculator', # 	GNOME Scientific calculator', #
@@ -167,12 +184,9 @@ class CustomProfile(XorgProfile):
             'gvfs', # 	Virtual filesystem implementation for GIO', # 	
             'gvfs-afc', # 	Virtual filesystem implementation for GIO - AFC backend (Apple mobile devices)', # 	
             'gvfs-dnssd', # 	Virtual filesystem implementation for GIO - DNS-SD and WebDAV backend (macOS file sharing)', # 	
-            'gvfs-goa', # 	Virtual filesystem implementation for GIO - Gnome Online Accounts backend (e.g. OwnCloud)', # 	
-            #'gvfs-google', # 	Virtual filesystem implementation for GIO - Google Drive backend', #
-            #'gvfs-gphoto2', # 	Virtual filesystem implementation for GIO - gphoto2 backend (PTP camera, MTP media player)', #
+            'gvfs-goa', # 	Virtual filesystem implementation for GIO - Gnome Online Accounts backend (e.g. OwnCloud)', #
             'gvfs-mtp', # 	Virtual filesystem implementation for GIO - MTP backend (Android, media player)', # 	
-            'gvfs-nfs', # 	Virtual filesystem implementation for GIO - NFS backend', # 	
-            #'gvfs-onedrive', # 	Virtual filesystem implementation for GIO - Microsoft OneDrive backend', #
+            'gvfs-nfs', # 	Virtual filesystem implementation for GIO - NFS backend', #
             'gvfs-smb', # 	Virtual filesystem implementation for GIO - SMB/CIFS backend (Windows file sharing)', # 	
             'gvfs-wsdd', # 	Virtual filesystem implementation for GIO - Web Services Dynamic Discovery backend (Windows discovery)', # 	
             'loupe', # 	A simple image viewer for GNOME', #
@@ -186,13 +200,15 @@ class CustomProfile(XorgProfile):
             'totem', # 	Movie player for the GNOME desktop based on GStreamer', #
             'xdg-desktop-portal-gnome', # 	Backend implementation for xdg-desktop-portal for the GNOME desktop environment', # 	
             'xdg-user-dirs-gtk', # 	Creates user dirs and asks to relocalize them', #
-
+            # custom gnome stuff
+            'gnome-shell-extensions', 'gnome-browser-connector'
             # custom additional ones
            'nano','wget','git', 'firefox', 'vlc', 'gnome-boxes', 'openscad', 'prusa-slicer', 'gimp',
            'zed','resources', 'steam','discord', 'blender', 'obs-studio', 'kicad','less',
            'rustup','rustrover','rustrover-jre','intellij-idea-ultimate-edition',
            'networkmanager','lib32-mesa','mesa','vulkan-radeon','lib32-vulkan-radeon',
             'htop', 'pycharm-professional', 'mangohud', 'lib32-mangohud', 'pipewire', 'pipewire-audio', 'wireplumber',
+            "archiso",
             # todo sound stack
         ]
 
@@ -213,9 +229,9 @@ with Installer(
     installation.set_mirrors(MirrorConfiguration(custom_repositories=[custom_repo]))
     installation.add_bootloader(Bootloader.Systemd)
 
-    user = User('lukas', Password(plaintext='1qayxsw2'), True)
+    user = User('lukas', Password(plaintext='$y$j9T$V3.bK9ivKqOVLw6FP3vZd/$I/74DMIysyyqUNHYeh/SEcHEDnNApy8UhL5Ane3VsK8'), True)
     installation.create_users(user)
-    installation.set_user_password(User('root', Password(plaintext='root'), False))
+    installation.set_user_password(User('root', Password(enc_password='$y$j9T$9WdI/dqHMFJnw0S2I51qV0$putBFyE2kORmJs9bWcRBjhax3yFoo0A/yk3hRtQzeL.'), False))
 
     profile_config = ProfileConfiguration(CustomProfile())
     profile_handler.install_profile_config(installation, profile_config)
