@@ -32,6 +32,12 @@ jobs:
             bash -lc '
               set -euxo pipefail
               sed -i "s/^#ParallelDownloads.*/ParallelDownloads = 10/" /etc/pacman.conf || true
+          
+              # Ensure gnupg and keyring are ready before upgrades
+              pacman -Sy --noconfirm gnupg archlinux-keyring
+              pacman-key --init
+              pacman-key --populate archlinux
+          
               pacman -Syu --noconfirm archiso
               cd /repo/path/to/your/archiso/profile
               mkarchiso -v -w /work -o /out .
