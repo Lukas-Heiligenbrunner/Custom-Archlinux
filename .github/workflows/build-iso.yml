@@ -40,7 +40,8 @@ jobs:
           
               pacman -Syu --noconfirm archiso
               
-              mkarchiso -v -w work -o out .
+              cd /repo
+              mkarchiso -v -w /work -o /out .
             '
 
       - name: Upload ISO artifact
