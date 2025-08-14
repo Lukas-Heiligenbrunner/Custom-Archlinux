@@ -49,3 +49,4 @@ jobs:
         with:
           name: archlinux-iso
           path: out/*.iso
+          overwrite: 'true'

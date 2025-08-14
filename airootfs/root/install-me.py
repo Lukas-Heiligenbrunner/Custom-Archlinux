@@ -1,33 +1,22 @@
 from pathlib import Path
 from typing import override
 
-from archinstall.default_profiles.desktops.gnome import GnomeProfile
 from archinstall.default_profiles.profile import ProfileType, GreeterType
 from archinstall.default_profiles.xorg import XorgProfile
 from archinstall.lib.disk.device_handler import device_handler
 from archinstall.lib.disk.filesystem import FilesystemHandler
 from archinstall.lib.installer import Installer
-from archinstall.lib.models import Repository, LocaleConfiguration, Bootloader, CustomRepository, MirrorConfiguration
-from archinstall.lib.models.device_model import (
-    DeviceModification,
-    DiskLayoutConfiguration,
-    DiskLayoutType,
-    FilesystemType,
-    ModificationStatus,
-    PartitionFlag,
-    PartitionModification,
-    PartitionType,
-    Size,
-    Unit,
-)
+from archinstall.lib.models import Repository, LocaleConfiguration, Bootloader, CustomRepository, MirrorConfiguration, \
+    FilesystemType, DeviceModification, PartitionModification, ModificationStatus, PartitionType, PartitionFlag, \
+    DiskLayoutConfiguration, DiskLayoutType, Size, Unit, ProfileConfiguration
 from archinstall.lib.models.mirrors import SignCheck, SignOption
-from archinstall.lib.models.profile_model import ProfileConfiguration
 from archinstall.lib.models.users import Password, User
 from archinstall.lib.profile.profiles_handler import profile_handler
 
 # we're creating a new ext4 filesystem installation
 fs_type = FilesystemType('ext4')
 device_path = Path('/dev/vda')
+mountpoint = Path('/mnt/arch')
 
 # get the physical disk device
 device = device_handler.get_device(device_path)
@@ -80,8 +69,6 @@ fs_handler = FilesystemHandler(disk_config)
 # WARNING: this will potentially format the filesystem and delete all data
 fs_handler.perform_filesystem_operations(show_countdown=False)
 
-mountpoint = Path('/tmp')
-
 custom_repo = CustomRepository(
     name='repo',
     url='https://repo.heili.eu/$arch',
@@ -112,7 +99,7 @@ class CustomProfile(XorgProfile):
         installation.arch_chroot(f'rustup default stable','lukas')
 
         local_background_path = Path('/root/rsc/background-hogwartslegacy.png')  # Adjust path
-        chroot_background_path = Path(f"{installation.mountpoint}/home/lukas/Pictures/background.png")
+        chroot_background_path = Path(f"{installation.target}/home/lukas/Pictures/background.png")
         chroot_background_path.parent.mkdir(parents=True, exist_ok=True)
         chroot_background_path.write_bytes(local_background_path.read_bytes())
         installation.arch_chroot(f'chown -R lukas:lukas /home/lukas/Pictures', 'root')
@@ -138,7 +125,7 @@ class CustomProfile(XorgProfile):
 
             "gnome-extensions enable tiling-assistant@leleat-on-github",
 
-            "gsettings set org.gnome.shell.extensions.tiling-assistant enable-tiling-popup false"
+            "gsettings set org.gnome.shell.extensions.tiling-assistant enable-tiling-popup false",
         ]
 
         for cmd in gsettings_cmds:

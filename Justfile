@@ -1,2 +1,2 @@
 build:
-  mkarchiso -v -w work -o out .
+  mkarchiso -v -w ../work -o out .
