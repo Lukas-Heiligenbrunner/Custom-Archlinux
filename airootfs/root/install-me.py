@@ -12,6 +12,10 @@ from archinstall.lib.models import Repository, LocaleConfiguration, Bootloader, 
 from archinstall.lib.models.mirrors import SignCheck, SignOption
 from archinstall.lib.models.users import Password, User
 from archinstall.lib.profile.profiles_handler import profile_handler
+from archinstall.lib.general import SysCommand
+from archinstall.lib.exceptions import HardwareIncompatibilityError, SysCallError
+from archinstall.lib.hardware import SysInfo
+from tqdm import tqdm
 
 # we're creating a new ext4 filesystem installation
 fs_type = FilesystemType('ext4')
@@ -111,6 +115,9 @@ class CustomProfile(XorgProfile):
             'gsettings set org.gnome.desktop.background picture-uri-dark "file:///home/lukas/Pictures/background.png"',
             'gsettings set org.gnome.desktop.interface color-scheme "prefer-dark"',
 
+            # set dash favorite-apps
+            "gsettings set org.gnome.shell favorite-apps ['firefox.desktop', 'org.gnome.Console.desktop', 'org.gnome.Nautilus.desktop', 'steam.desktop', 'net.nokyan.Resources.desktop']",
+
             # Screenshot UI: keep Print and add Ctrl+F12
             'gsettings set org.gnome.shell.keybindings show-screenshot-ui "[\'<Ctrl>F12\']"',
 
@@ -120,18 +127,29 @@ class CustomProfile(XorgProfile):
             # Show seconds in top bar clock
             'gsettings set org.gnome.desktop.interface clock-show-seconds true',
 
+            # nautilus settings
+            'gsettings set org.gnome.nautilus.preferences default-folder-viewer "list-view"',
+            'gsettings set org.gnome.nautilus.preferences show-create-link true',
+            'gsettings set org.gnome.nautilus.preferences show-delete-permanently true',
+            'gsettings set org.gnome.nautilus.list-view default-zoom-level "small"',
+            'gsettings set org.gnome.nautilus.list-view use-tree-view true',
+            'gsettings set org.gtk.gtk4.settings.file-chooser sort-directories-first true',
+
             # Disable automatic suspend (on AC and battery)
             "gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'",
             "gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type 'nothing'",
 
             "gnome-extensions enable tiling-assistant@leleat-on-github",
-            # https://extensions.gnome.org/extension-data/VitalsCoreCoding.com.v73.shell-extension.zip
             "gnome-extensions enable Vitals@CoreCoding.com",
+            "gnome-extensions enable launch-new-instance@gnome-shell-extensions.gcampax.github.com",
 
-            #"gsettings set org.gnome.shell.extensions.tiling-assistant enable-tiling-popup false",
+            # disable weird popup
+            "gsettings set org.gnome.shell.extensions.tiling-assistant enable-tiling-popup false",
+            # disable opening tiled windows together
+            "gsettings set org.gnome.shell.extensions.tiling-assistant enable-raise-tile-group false",
         ]
 
-        for cmd in gsettings_cmds:
+        for cmd in tqdm(gsettings_cmds):
             install_session.arch_chroot(f'dbus-launch --exit-with-session {cmd}', 'lukas')
 
     @property
@@ -191,7 +209,8 @@ class CustomProfile(XorgProfile):
             'xdg-desktop-portal-gnome',
             'xdg-user-dirs-gtk',
             # custom gnome stuff
-            'gnome-shell-extensions', 'gnome-browser-connector','gnome-shell-extension-vitals',
+            'gnome-shell-extensions', 'gnome-browser-connector',
+            'gnome-shell-extension-vitals', 'gnome-shell-extension-tiling-assistant',
             #'gnome-shell-extension-tiling-assistant',
             # custom additional ones
             'nano', 'wget', 'git', 'firefox', 'vlc', 'gnome-boxes', 'openscad', 'prusa-slicer', 'gimp',
@@ -207,23 +226,6 @@ class CustomProfile(XorgProfile):
     @override
     def default_greeter_type(self) -> GreeterType:
         return GreeterType.Gdm
-
-from archinstall.lib.general import SysCommand, run
-from archinstall.lib.exceptions import DiskError, HardwareIncompatibilityError, RequirementError, ServiceException, SysCallError
-from archinstall.lib.hardware import SysInfo
-from archinstall.lib.models.device import (
-    DiskEncryption,
-    DiskLayoutConfiguration,
-    EncryptionType,
-    FilesystemType,
-    LvmVolume,
-    PartitionModification,
-    SectorSize,
-    Size,
-    SnapshotType,
-    SubvolumeModification,
-    Unit,
-)
 
 with Installer(
     mountpoint,
@@ -257,15 +259,7 @@ with Installer(
     elif not efi_partition.mountpoint:
         raise ValueError('EFI system partition is not mounted')
 
-    # TODO: Ideally we would want to check if another config
-    # points towards the same disk and/or partition.
-    # And in which case we should do some clean up.
     bootctl_options = []
-
-    if boot_partition != efi_partition:
-        bootctl_options.append(f'--esp-path={efi_partition.mountpoint}')
-        bootctl_options.append(f'--boot-path={boot_partition.mountpoint}')
-
     systemd_version = '257'  # This works as a safety workaround for this hot-fix
 
     # Install the boot loader

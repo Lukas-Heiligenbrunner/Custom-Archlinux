@@ -2,6 +2,7 @@ alsa-utils
 amd-ucode
 arch-install-scripts
 archinstall
+python-tqdm
 b43-fwcutter
 base
 bcachefs-tools
