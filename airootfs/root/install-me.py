@@ -32,25 +32,26 @@ length_boot = Size(1024, Unit.MiB, device.device_info.sector_size)
 start_root = start_boot + length_boot
 length_root = device.device_info.total_size - start_root - start_boot # todo -start_boot shouldnt be required actually
 
-# create a new boot partition
+# create a new EFI system partition for systemd-boot
 boot_partition = PartitionModification(
     status=ModificationStatus.Create,
     type=PartitionType.Primary,
     start=start_boot,
     length=length_boot,
-    mountpoint=Path('/boot'),
+    mountpoint=Path('/boot'),  # archinstall detects ESP here for systemd-boot
     fs_type=FilesystemType.Fat32,
-    flags=[PartitionFlag.ESP],
-    #flags=[PartitionFlag.BOOT], # for mbr
+    flags=[PartitionFlag.ESP, PartitionFlag.BOOT],
+    #flags=[PartitionFlag.BOOT],  # for MBR (not used here; we're using GPT+ESP)
 )
 
+# root partition
 root_partition = PartitionModification(
     status=ModificationStatus.Create,
     type=PartitionType.Primary,
     start=start_root,
     length=length_root,
     mountpoint=Path('/'),
-    fs_type=fs_type,
+    fs_type=FilesystemType.Ext4,
     mount_options=[],
 )
 
@@ -58,7 +59,7 @@ device_modification.add_partition(boot_partition)
 device_modification.add_partition(root_partition)
 
 disk_config = DiskLayoutConfiguration(
-    config_type=DiskLayoutType.Default,
+    config_type=DiskLayoutType.Manual,
     device_modifications=[device_modification],
 )
 
@@ -81,34 +82,34 @@ class CustomProfile(XorgProfile):
     def __init__(self):
         super().__init__('GNOME', ProfileType.DesktopEnv)
 
-    def install(self, install_session:'Installer') -> None:
+    def install(self, install_session: 'Installer') -> None:
         super().install(install_session)
         install_session.add_additional_packages(self.packages)
-
         self.post_install(install_session)
 
-    def post_install(self, install_session:'Installer') -> None:
+    def post_install(self, install_session: 'Installer') -> None:
         super().post_install(install_session)
-        installation.enable_service('NetworkManager.service')
-        installation.enable_service('gdm.service')
+        install_session.enable_service('NetworkManager.service')
+        install_session.enable_service('gdm.service')
 
         # set git name+email
-        installation.arch_chroot(f'git config --global user.email "lukas.heiligenbrunner@gmail.com"','lukas')
-        installation.arch_chroot(f'git config --global user.name "Lukas Heiligenbrunner"','lukas')
+        install_session.arch_chroot('git config --global user.email "lukas.heiligenbrunner@gmail.com"', 'lukas')
+        install_session.arch_chroot('git config --global user.name "Lukas Heiligenbrunner"', 'lukas')
         # setup rust toolchain
-        installation.arch_chroot(f'rustup default stable','lukas')
+        install_session.arch_chroot('rustup default stable', 'lukas')
 
-        local_background_path = Path('/root/rsc/background-hogwartslegacy.png')  # Adjust path
-        chroot_background_path = Path(f"{installation.target}/home/lukas/Pictures/background.png")
+        # copy background
+        local_background_path = Path('/root/rsc/background-hogwartslegacy.png')  # Adjust path if needed
+        chroot_background_path = Path(f"{install_session.target}/home/lukas/Pictures/background.png")
         chroot_background_path.parent.mkdir(parents=True, exist_ok=True)
         chroot_background_path.write_bytes(local_background_path.read_bytes())
-        installation.arch_chroot(f'chown -R lukas:lukas /home/lukas/Pictures', 'root')
+        install_session.arch_chroot('chown -R lukas:lukas /home/lukas/Pictures', 'root')
 
-        # prepare gsettings commands
+        # prepare gsettings commands (run for user 'lukas')
         gsettings_cmds = [
-            'gsettings set org.gnome.desktop.background picture-uri "file:///home/lukas/Pictures/background.jpg"',
-            'gsettings set org.gnome.desktop.background picture-uri-dark "file:///home/lukas/Pictures/background.jpg"',
-            'gsettings set org.gnome.desktop.interface color-scheme "prefer-dark"'
+            'gsettings set org.gnome.desktop.background picture-uri "file:///home/lukas/Pictures/background.png"',
+            'gsettings set org.gnome.desktop.background picture-uri-dark "file:///home/lukas/Pictures/background.png"',
+            'gsettings set org.gnome.desktop.interface color-scheme "prefer-dark"',
 
             # Screenshot UI: keep Print and add Ctrl+F12
             'gsettings set org.gnome.shell.keybindings show-screenshot-ui "[\'<Ctrl>F12\']"',
@@ -124,78 +125,81 @@ class CustomProfile(XorgProfile):
             "gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type 'nothing'",
 
             "gnome-extensions enable tiling-assistant@leleat-on-github",
+            # https://extensions.gnome.org/extension-data/VitalsCoreCoding.com.v73.shell-extension.zip
+            "gnome-extensions enable Vitals@CoreCoding.com",
 
-            "gsettings set org.gnome.shell.extensions.tiling-assistant enable-tiling-popup false",
+            #"gsettings set org.gnome.shell.extensions.tiling-assistant enable-tiling-popup false",
         ]
 
         for cmd in gsettings_cmds:
-            installation.arch_chroot(f'dbus-launch --exit-with-session {cmd}', 'lukas')
+            install_session.arch_chroot(f'dbus-launch --exit-with-session {cmd}', 'lukas')
 
     @property
     @override
     def packages(self) -> list[str]:
         return [
-           'gnome-tweaks', self.default_greeter_type.value,
+            'gnome-tweaks', self.default_greeter_type.value,
 
             # default gnome applications with some removed
-            'baobab', # 	A graphical directory tree analyzer', #
-            'decibels', # 	Audio player for GNOME', #
+            'baobab',
+            'decibels',
             'papers',
-            'gdm', # 	Display manager and login screen', #
-            'gnome-backgrounds', # 	Background images and data for GNOME', # 	
-            'gnome-calculator', # 	GNOME Scientific calculator', #
-            'gnome-calendar', # 	Simple and beautiful calendar application designed to perfectly fit the GNOME desktop', # 	
-            'gnome-characters', # 	A character map application', # 	
-            'gnome-clocks', # 	Clocks applications for GNOME', # 	
-            'gnome-color-manager', # 	GNOME Color Profile Tools', # 	
-            'gnome-connections', # 	Remote desktop client for the GNOME desktop environment', # 	
-            'gnome-console', # 	A simple user-friendly terminal emulator for the GNOME desktop', # 	
-            'gnome-contacts', # 	Contacts Manager for GNOME', #
-            'gnome-control-center', # 	GNOME's main interface to configure various aspects of the desktop', # 	
-            'gnome-disk-utility', # 	Disk Management Utility for GNOME', # 	
-            'gnome-font-viewer', # 	A font viewer utility for GNOME', # 	
-            'gnome-keyring', # 	Stores passwords and encryption keys', # 	
-            'gnome-logs', # 	A log viewer for the systemd journal', #
-            'gnome-maps', # 	Find places around the world', # 	
-            'gnome-menus', # 	GNOME menu specifications', #
-            'gnome-remote-desktop', # 	GNOME Remote Desktop server', # 	
-            'gnome-session', # 	The GNOME Session Handler', #
-            'gnome-settings-daemon', # 	GNOME Settings Daemon', #
-            'gnome-shell', # 	Next generation desktop shell', #
-            'gnome-shell-extensions', # 	Extensions for GNOME shell, including classic mode', #
-            'gnome-text-editor', # 	A simple text editor for the GNOME desktop', #
-            'gnome-user-docs', # 	User documentation for GNOME', # 	
-            'gnome-user-share', # 	Easy to use user-level file sharing for GNOME', # 	
-            'gnome-weather', # 	Access current weather conditions and forecasts', # 	
-            'grilo-plugins', # 	A collection of plugins for the Grilo framework', # 	
-            'gvfs', # 	Virtual filesystem implementation for GIO', # 	
-            'gvfs-afc', # 	Virtual filesystem implementation for GIO - AFC backend (Apple mobile devices)', # 	
-            'gvfs-dnssd', # 	Virtual filesystem implementation for GIO - DNS-SD and WebDAV backend (macOS file sharing)', # 	
-            'gvfs-goa', # 	Virtual filesystem implementation for GIO - Gnome Online Accounts backend (e.g. OwnCloud)', #
-            'gvfs-mtp', # 	Virtual filesystem implementation for GIO - MTP backend (Android, media player)', # 	
-            'gvfs-nfs', # 	Virtual filesystem implementation for GIO - NFS backend', #
-            'gvfs-smb', # 	Virtual filesystem implementation for GIO - SMB/CIFS backend (Windows file sharing)', # 	
-            'gvfs-wsdd', # 	Virtual filesystem implementation for GIO - Web Services Dynamic Discovery backend (Windows discovery)', # 	
-            'loupe', # 	A simple image viewer for GNOME', #
-            'nautilus', # 	Default file manager for GNOME', #
-            'orca', # 	Screen reader for individuals who are blind or visually impaired', # 	
-            'rygel', # 	UPnP AV MediaServer and MediaRenderer', #
-            'simple-scan', # 	Simple scanning utility', # 	
-            'snapshot', # 	Take pictures and videos', #
-            'sushi', # 	A quick previewer for Nautilus', # 	
-            'tecla', # 	Keyboard layout viewer', # 	
-            'totem', # 	Movie player for the GNOME desktop based on GStreamer', #
-            'xdg-desktop-portal-gnome', # 	Backend implementation for xdg-desktop-portal for the GNOME desktop environment', # 	
-            'xdg-user-dirs-gtk', # 	Creates user dirs and asks to relocalize them', #
+            'gdm',
+            'gnome-backgrounds',
+            'gnome-calculator',
+            'gnome-calendar',
+            'gnome-characters',
+            'gnome-clocks',
+            'gnome-color-manager',
+            'gnome-connections',
+            'gnome-console',
+            'gnome-contacts',
+            'gnome-control-center',
+            'gnome-disk-utility',
+            'gnome-font-viewer',
+            'gnome-keyring',
+            'gnome-logs',
+            'gnome-maps',
+            'gnome-menus',
+            'gnome-remote-desktop',
+            'gnome-session',
+            'gnome-settings-daemon',
+            'gnome-shell',
+            'gnome-shell-extensions',
+            'gnome-text-editor',
+            'gnome-user-docs',
+            'gnome-user-share',
+            'gnome-weather',
+            'grilo-plugins',
+            'gvfs',
+            'gvfs-afc',
+            'gvfs-dnssd',
+            'gvfs-goa',
+            'gvfs-mtp',
+            'gvfs-nfs',
+            'gvfs-smb',
+            'gvfs-wsdd',
+            'loupe',
+            'nautilus',
+            'orca',
+            'rygel',
+            'simple-scan',
+            'snapshot',
+            'sushi',
+            'tecla',
+            'totem',
+            'xdg-desktop-portal-gnome',
+            'xdg-user-dirs-gtk',
             # custom gnome stuff
-            'gnome-shell-extensions', 'gnome-browser-connector'
+            'gnome-shell-extensions', 'gnome-browser-connector','gnome-shell-extension-vitals',
+            #'gnome-shell-extension-tiling-assistant',
             # custom additional ones
-           'nano','wget','git', 'firefox', 'vlc', 'gnome-boxes', 'openscad', 'prusa-slicer', 'gimp',
-           'zed','resources', 'steam','discord', 'blender', 'obs-studio', 'kicad','less',
-           'rustup','rustrover','rustrover-jre','intellij-idea-ultimate-edition',
-           'networkmanager','lib32-mesa','mesa','vulkan-radeon','lib32-vulkan-radeon',
+            'nano', 'wget', 'git', 'firefox', 'vlc', 'gnome-boxes', 'openscad', 'prusa-slicer', 'gimp',
+            'zed', 'resources', 'steam', 'discord', 'blender', 'obs-studio', 'kicad', 'less',
+            'rustup', 'rustrover', 'rustrover-jre', 'intellij-idea-ultimate-edition',
+            'networkmanager', 'lib32-mesa', 'mesa', 'vulkan-radeon', 'lib32-vulkan-radeon',
             'htop', 'pycharm-professional', 'mangohud', 'lib32-mangohud', 'pipewire', 'pipewire-audio', 'wireplumber',
-            "archiso",
+            'archiso', 'just',
             # todo sound stack
         ]
 
@@ -204,21 +208,119 @@ class CustomProfile(XorgProfile):
     def default_greeter_type(self) -> GreeterType:
         return GreeterType.Gdm
 
+from archinstall.lib.general import SysCommand, run
+from archinstall.lib.exceptions import DiskError, HardwareIncompatibilityError, RequirementError, ServiceException, SysCallError
+from archinstall.lib.hardware import SysInfo
+from archinstall.lib.models.device import (
+    DiskEncryption,
+    DiskLayoutConfiguration,
+    EncryptionType,
+    FilesystemType,
+    LvmVolume,
+    PartitionModification,
+    SectorSize,
+    Size,
+    SnapshotType,
+    SubvolumeModification,
+    Unit,
+)
 
 with Installer(
-        mountpoint,
-        disk_config,
-        kernels=['linux'],
+    mountpoint,
+    disk_config,
+    kernels=['linux'],
 ) as installation:
+    # Let Installer handle partitioning, formatting, and mounting under /mnt/arch
     installation.mount_ordered_layout()
-    installation.minimal_installation(hostname='arch-lukas', optional_repositories=[Repository.Multilib],
-                                      locale_config=LocaleConfiguration('de','en_US.UTF-8','UTF-8'))
-    installation.set_mirrors(MirrorConfiguration(custom_repositories=[custom_repo]))
-    installation.add_bootloader(Bootloader.Systemd)
 
-    user = User('lukas', Password(plaintext='$y$j9T$V3.bK9ivKqOVLw6FP3vZd/$I/74DMIysyyqUNHYeh/SEcHEDnNApy8UhL5Ane3VsK8'), True)
+    installation.minimal_installation(
+        hostname='arch-lukas',
+        optional_repositories=[Repository.Multilib],
+        locale_config=LocaleConfiguration('de', 'en_US.UTF-8', 'UTF-8')
+    )
+    installation.set_mirrors(MirrorConfiguration(custom_repositories=[custom_repo]))
+
+    # Install systemd-boot (requires UEFI boot mode and ESP mounted at /mnt/arch/boot)
+    #installation.add_bootloader(Bootloader.Systemd)
+    # debug('Installing systemd bootloader')
+
+    efi_partition = installation._get_efi_partition()
+    boot_partition = installation._get_boot_partition()
+    root = installation._get_root()
+    installation.pacman.strap('efibootmgr')
+
+    if not SysInfo.has_uefi():
+        raise HardwareIncompatibilityError
+
+    if not efi_partition:
+        raise ValueError('Could not detect EFI system partition')
+    elif not efi_partition.mountpoint:
+        raise ValueError('EFI system partition is not mounted')
+
+    # TODO: Ideally we would want to check if another config
+    # points towards the same disk and/or partition.
+    # And in which case we should do some clean up.
+    bootctl_options = []
+
+    if boot_partition != efi_partition:
+        bootctl_options.append(f'--esp-path={efi_partition.mountpoint}')
+        bootctl_options.append(f'--boot-path={boot_partition.mountpoint}')
+
+    systemd_version = '257'  # This works as a safety workaround for this hot-fix
+
+    # Install the boot loader
+    try:
+        # Force EFI variables since bootctl detects arch-chroot
+        # as a container environemnt since v257 and skips them silently.
+        # https://github.com/systemd/systemd/issues/36174
+        if systemd_version >= '258':
+            SysCommand(f'arch-chroot {installation.target} bootctl --variables=yes {" ".join(bootctl_options)} install')
+        else:
+            SysCommand(f'arch-chroot {installation.target} bootctl {" ".join(bootctl_options)} install')
+    except SysCallError:
+        if systemd_version >= '258':
+            # Fallback, try creating the boot loader without touching the EFI variables
+            SysCommand(f'arch-chroot {installation.target} bootctl --variables=no {" ".join(bootctl_options)} install')
+        else:
+            SysCommand(f'arch-chroot {installation.target} bootctl --no-variables {" ".join(bootctl_options)} install')
+
+    # Loader configuration is stored in ESP/loader:
+    # https://man.archlinux.org/man/loader.conf.5
+    loader_conf = installation.target / efi_partition.relative_mountpoint / 'loader/loader.conf'
+    # Ensure that the ESP/loader/ directory exists before trying to create a file in it
+    loader_conf.parent.mkdir(parents=True, exist_ok=True)
+
+    default_kernel = installation.kernels[0]
+
+    entry_name = installation.init_time + '_{kernel}{variant}.conf'
+    default_entry = entry_name.format(kernel=default_kernel, variant='')
+    installation._create_bls_entries(boot_partition, root, entry_name)
+
+    default = f'default {default_entry}'
+
+    # Modify or create a loader.conf
+    try:
+        loader_data = loader_conf.read_text().splitlines()
+    except FileNotFoundError:
+        loader_data = [
+            default,
+            'timeout 15',
+        ]
+    else:
+        for index, line in enumerate(loader_data):
+            if line.startswith('default'):
+                loader_data[index] = default
+            elif line.startswith('#timeout'):
+                # We add in the default timeout to support dual-boot
+                loader_data[index] = line.removeprefix('#')
+
+    loader_conf.write_text('\n'.join(loader_data) + '\n')
+
+    installation._helper_flags['bootloader'] = 'systemd'
+
+    user = User('lukas', Password(enc_password='$6$73CpxYtM7XJpkM1/$j0EDtT7VGzpTsgBhtrhzfMPId2PC9JnSvUMXwhnW0y2RWfyEspQwlsCSIA53qatk10zKuOg/GAMWVjHUoUE.r/'), True)
     installation.create_users(user)
-    installation.set_user_password(User('root', Password(enc_password='$y$j9T$9WdI/dqHMFJnw0S2I51qV0$putBFyE2kORmJs9bWcRBjhax3yFoo0A/yk3hRtQzeL.'), False))
+    installation.set_user_password(User('root', Password(enc_password='$6$krcop.s33vKrd/Nh$rO/toJMTBfowFx5hdg9t3vTri0.Ienr.uhm5MnO3xi4KHja8eO/kxeXrK/Z/z..rw3lz63qzSiDlTMwMIW1bh/'), False))
 
     profile_config = ProfileConfiguration(CustomProfile())
     profile_handler.install_profile_config(installation, profile_config)
