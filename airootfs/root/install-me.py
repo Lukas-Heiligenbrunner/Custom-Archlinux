@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from pathlib import Path
 from typing import override
 
@@ -6,7 +7,7 @@ from archinstall.default_profiles.xorg import XorgProfile
 from archinstall.lib.disk.device_handler import device_handler
 from archinstall.lib.disk.filesystem import FilesystemHandler
 from archinstall.lib.installer import Installer
-from archinstall.lib.models import Repository, LocaleConfiguration, Bootloader, CustomRepository, MirrorConfiguration, \
+from archinstall.lib.models import Repository, LocaleConfiguration, CustomRepository, MirrorConfiguration, \
     FilesystemType, DeviceModification, PartitionModification, ModificationStatus, PartitionType, PartitionFlag, \
     DiskLayoutConfiguration, DiskLayoutType, Size, Unit, ProfileConfiguration
 from archinstall.lib.models.mirrors import SignCheck, SignOption
@@ -16,71 +17,86 @@ from archinstall.lib.general import SysCommand
 from archinstall.lib.exceptions import HardwareIncompatibilityError, SysCallError
 from archinstall.lib.hardware import SysInfo
 from tqdm import tqdm
+import os
+import sys
+import json
+import subprocess
 
 # we're creating a new ext4 filesystem installation
 fs_type = FilesystemType('ext4')
 device_path = Path('/dev/vda')
 mountpoint = Path('/mnt/arch')
 
-# get the physical disk device
-device = device_handler.get_device(device_path)
 
-if not device:
-    raise ValueError('No device found for given path')
+def ensure_root():
+    if os.geteuid() != 0:
+        print("This installer needs root. Re-executing with sudo...")
+        os.execvp("sudo", ["sudo", sys.executable] + sys.argv)
 
-# create a new modification for the specific device
-device_modification = DeviceModification(device, wipe=True)
+def drop_to_shell():
+    print("Dropping to an interactive shell. Type 'exit' to return.")
+    os.execv("/bin/bash", ["bash", "-l"])
 
-start_boot = Size(1, Unit.MiB, device.device_info.sector_size)
-length_boot = Size(1024, Unit.MiB, device.device_info.sector_size)
-start_root = start_boot + length_boot
-length_root = device.device_info.total_size - start_root - start_boot # todo -start_boot shouldnt be required actually
+def ask_yes_no(prompt: str, default_yes: bool = True) -> bool:
+    suffix = "[Y/n]" if default_yes else "[y/N]"
+    try:
+        ans = input(f"{prompt} {suffix}").strip()
+    except EOFError:
+        ans = ""
+    if ans == "":
+        return default_yes
+    return ans.lower().startswith("y")
 
-# create a new EFI system partition for systemd-boot
-boot_partition = PartitionModification(
-    status=ModificationStatus.Create,
-    type=PartitionType.Primary,
-    start=start_boot,
-    length=length_boot,
-    mountpoint=Path('/boot'),  # archinstall detects ESP here for systemd-boot
-    fs_type=FilesystemType.Fat32,
-    flags=[PartitionFlag.ESP, PartitionFlag.BOOT],
-    #flags=[PartitionFlag.BOOT],  # for MBR (not used here; we're using GPT+ESP)
-)
+def _humanize_size(num_bytes: int) -> str:
+    size = float(num_bytes)
+    for unit in ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB']:
+        if size < 1024.0 or unit == 'PiB':
+            if unit == 'B':
+                return f"{size:.0f} {unit}"
+            return f"{size:.1f} {unit}"
+        size /= 1024.0
+    return f"{num_bytes} B"
 
-# root partition
-root_partition = PartitionModification(
-    status=ModificationStatus.Create,
-    type=PartitionType.Primary,
-    start=start_root,
-    length=length_root,
-    mountpoint=Path('/'),
-    fs_type=FilesystemType.Ext4,
-    mount_options=[],
-)
+def _list_block_devices() -> list[dict]:
+    # Use lsblk to enumerate block devices (disks only)
+    cmd = ["lsblk", "-J", "-b", "-o", "NAME,TYPE,SIZE,ROTA,MODEL,PATH,TRAN"]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(res.stdout)
+    except Exception as e:
+        print(f"Failed to enumerate disks via lsblk: {e}")
+        return []
 
-device_modification.add_partition(boot_partition)
-device_modification.add_partition(root_partition)
+    devices: list[dict] = []
+    for b in data.get("blockdevices", []):
+        if (b.get("type") or "").lower() != "disk":
+            continue
+        name = b.get("name") or ""
+        devices.append({
+            "name": name,
+            "path": b.get("path") or f"/dev/{name}",
+            "size": int(b.get("size") or 0),
+            "rota": int(b.get("rota") or 1),  # 0 = non-rotational (SSD/NVMe), 1 = rotational (HDD)
+            "model": (b.get("model") or "").strip(),
+            "tran": (b.get("tran") or "").strip().lower(),  # e.g., "nvme", "sata", "virtio"
+        })
+    return devices
 
-disk_config = DiskLayoutConfiguration(
-    config_type=DiskLayoutType.Manual,
-    device_modifications=[device_modification],
-)
+def _select_target_device(devices: list[dict]) -> tuple[dict, str]:
+    # Priority: NVMe > any SSD (non-rotational) > largest disk
+    nvmes = [d for d in devices if d["tran"] == "nvme" or d["path"].startswith("/dev/nvme")]
+    if nvmes:
+        chosen = max(nvmes, key=lambda d: d["size"])
+        return chosen, "NVMe drive"
 
-# initiate file handler with the disk config and the optional disk encryption config
-fs_handler = FilesystemHandler(disk_config)
+    ssds = [d for d in devices if d["rota"] == 0]
+    if ssds:
+        chosen = max(ssds, key=lambda d: d["size"])
+        return chosen, "SSD (non-rotational) drive"
 
-# perform all file operations
-# WARNING: this will potentially format the filesystem and delete all data
-fs_handler.perform_filesystem_operations(show_countdown=False)
-
-custom_repo = CustomRepository(
-    name='repo',
-    url='https://repo.heili.eu/$arch',
-    sign_check=SignCheck.Optional,
-    sign_option=SignOption.TrustAll
-)
-
+    # Fallback to the largest disk
+    chosen = max(devices, key=lambda d: d["size"])
+    return chosen, "largest available disk"
 
 class CustomProfile(XorgProfile):
     def __init__(self):
@@ -116,7 +132,7 @@ class CustomProfile(XorgProfile):
             'gsettings set org.gnome.desktop.interface color-scheme "prefer-dark"',
 
             # set dash favorite-apps
-            "gsettings set org.gnome.shell favorite-apps ['firefox.desktop', 'org.gnome.Console.desktop', 'org.gnome.Nautilus.desktop', 'steam.desktop', 'net.nokyan.Resources.desktop']",
+            'gsettings set org.gnome.shell favorite-apps "[\'firefox.desktop\', \'org.gnome.Console.desktop\', \'org.gnome.Nautilus.desktop\', \'steam.desktop\', \'net.nokyan.Resources.desktop\']"',
 
             # Screenshot UI: keep Print and add Ctrl+F12
             'gsettings set org.gnome.shell.keybindings show-screenshot-ui "[\'<Ctrl>F12\']"',
@@ -133,7 +149,7 @@ class CustomProfile(XorgProfile):
             'gsettings set org.gnome.nautilus.preferences show-delete-permanently true',
             'gsettings set org.gnome.nautilus.list-view default-zoom-level "small"',
             'gsettings set org.gnome.nautilus.list-view use-tree-view true',
-            'gsettings set org.gtk.gtk4.settings.file-chooser sort-directories-first true',
+            #'gsettings set org.gtk.gtk4.settings.file-chooser sort-directories-first true',
 
             # Disable automatic suspend (on AC and battery)
             "gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'",
@@ -227,94 +243,190 @@ class CustomProfile(XorgProfile):
     def default_greeter_type(self) -> GreeterType:
         return GreeterType.Gdm
 
-with Installer(
-    mountpoint,
-    disk_config,
-    kernels=['linux'],
-) as installation:
-    # Let Installer handle partitioning, formatting, and mounting under /mnt/arch
-    installation.mount_ordered_layout()
+def main():
+    ensure_root()
 
-    installation.minimal_installation(
-        hostname='arch-lukas',
-        optional_repositories=[Repository.Multilib],
-        locale_config=LocaleConfiguration('de', 'en_US.UTF-8', 'UTF-8')
+    print("Custom-Archlinux Installer")
+    print("--------------------------")
+
+    # Detect available disks and select the target disk
+    devices = _list_block_devices()
+    if not devices:
+        raise ValueError("No block devices detected. Aborting.")
+
+    print("Detected disks:")
+    for d in devices:
+        kind = "SSD/NVMe" if d["rota"] == 0 else "HDD"
+        tran = d["tran"] or "n/a"
+        model = d["model"] or "n/a"
+        print(f" - {d['path']:>12} | size: {_humanize_size(d['size']):>8} | type: {kind:>9} | transport: {tran:>6} | model: {model}")
+
+    selected, reason = _select_target_device(devices)
+    print(f"Selected disk: {selected['path']} ({_humanize_size(selected['size'])}) [{reason}]")
+
+    if not ask_yes_no("Run installation now?", default_yes=True):
+        drop_to_shell()
+
+    # get the physical disk device using archinstall's device handler
+    device_path = Path(selected['path'])
+    device = device_handler.get_device(device_path)
+
+    if not device:
+        raise ValueError('No device found for given path')
+
+    if not device:
+        raise ValueError('No device found for given path')
+
+    # create a new modification for the specific device
+    device_modification = DeviceModification(device, wipe=True)
+
+    start_boot = Size(1, Unit.MiB, device.device_info.sector_size)
+    length_boot = Size(1024, Unit.MiB, device.device_info.sector_size)
+    start_root = start_boot + length_boot
+    length_root = device.device_info.total_size - start_root - start_boot # todo -start_boot shouldnt be required actually
+
+    # create a new EFI system partition for systemd-boot
+    boot_partition = PartitionModification(
+        status=ModificationStatus.Create,
+        type=PartitionType.Primary,
+        start=start_boot,
+        length=length_boot,
+        mountpoint=Path('/boot'),  # archinstall detects ESP here for systemd-boot
+        fs_type=FilesystemType.Fat32,
+        flags=[PartitionFlag.ESP, PartitionFlag.BOOT],
+        #flags=[PartitionFlag.BOOT],  # for MBR (not used here; we're using GPT+ESP)
     )
-    installation.set_mirrors(MirrorConfiguration(custom_repositories=[custom_repo]))
 
-    # Install systemd-boot (requires UEFI boot mode and ESP mounted at /mnt/arch/boot)
-    #installation.add_bootloader(Bootloader.Systemd)
-    # debug('Installing systemd bootloader')
+    # root partition
+    root_partition = PartitionModification(
+        status=ModificationStatus.Create,
+        type=PartitionType.Primary,
+        start=start_root,
+        length=length_root,
+        mountpoint=Path('/'),
+        fs_type=FilesystemType.Ext4,
+        mount_options=[],
+    )
 
-    efi_partition = installation._get_efi_partition()
-    boot_partition = installation._get_boot_partition()
-    root = installation._get_root()
-    installation.pacman.strap('efibootmgr')
+    device_modification.add_partition(boot_partition)
+    device_modification.add_partition(root_partition)
 
-    if not SysInfo.has_uefi():
-        raise HardwareIncompatibilityError
+    disk_config = DiskLayoutConfiguration(
+        config_type=DiskLayoutType.Manual,
+        device_modifications=[device_modification],
+    )
 
-    if not efi_partition:
-        raise ValueError('Could not detect EFI system partition')
-    elif not efi_partition.mountpoint:
-        raise ValueError('EFI system partition is not mounted')
+    # initiate file handler with the disk config and the optional disk encryption config
+    fs_handler = FilesystemHandler(disk_config)
 
-    bootctl_options = []
-    systemd_version = '257'  # This works as a safety workaround for this hot-fix
+    # perform all file operations
+    # WARNING: this will potentially format the filesystem and delete all data
+    fs_handler.perform_filesystem_operations(show_countdown=False)
 
-    # Install the boot loader
-    try:
-        # Force EFI variables since bootctl detects arch-chroot
-        # as a container environemnt since v257 and skips them silently.
-        # https://github.com/systemd/systemd/issues/36174
-        if systemd_version >= '258':
-            SysCommand(f'arch-chroot {installation.target} bootctl --variables=yes {" ".join(bootctl_options)} install')
+    custom_repo = CustomRepository(
+        name='repo',
+        url='https://repo.heili.eu/$arch',
+        sign_check=SignCheck.Optional,
+        sign_option=SignOption.TrustAll
+    )
+
+    with Installer(
+        mountpoint,
+        disk_config,
+        kernels=['linux'],
+    ) as installation:
+        # Let Installer handle partitioning, formatting, and mounting under /mnt/arch
+        installation.mount_ordered_layout()
+
+        installation.minimal_installation(
+            hostname='arch-lukas',
+            optional_repositories=[Repository.Multilib],
+            locale_config=LocaleConfiguration('de', 'en_US.UTF-8', 'UTF-8')
+        )
+        installation.set_mirrors(MirrorConfiguration(custom_repositories=[custom_repo]))
+
+        # Install systemd-boot (requires UEFI boot mode and ESP mounted at /mnt/arch/boot)
+        #installation.add_bootloader(Bootloader.Systemd)
+        # debug('Installing systemd bootloader')
+
+        efi_partition = installation._get_efi_partition()
+        boot_partition = installation._get_boot_partition()
+        root = installation._get_root()
+        installation.pacman.strap('efibootmgr')
+
+        if not SysInfo.has_uefi():
+            raise HardwareIncompatibilityError
+
+        if not efi_partition:
+            raise ValueError('Could not detect EFI system partition')
+        elif not efi_partition.mountpoint:
+            raise ValueError('EFI system partition is not mounted')
+
+        bootctl_options = []
+        systemd_version = '257'  # This works as a safety workaround for this hot-fix
+
+        # Install the boot loader
+        try:
+            # Force EFI variables since bootctl detects arch-chroot
+            # as a container environemnt since v257 and skips them silently.
+            # https://github.com/systemd/systemd/issues/36174
+            if systemd_version >= '258':
+                SysCommand(f'arch-chroot {installation.target} bootctl --variables=yes {" ".join(bootctl_options)} install')
+            else:
+                SysCommand(f'arch-chroot {installation.target} bootctl {" ".join(bootctl_options)} install')
+        except SysCallError:
+            if systemd_version >= '258':
+                # Fallback, try creating the boot loader without touching the EFI variables
+                SysCommand(f'arch-chroot {installation.target} bootctl --variables=no {" ".join(bootctl_options)} install')
+            else:
+                SysCommand(f'arch-chroot {installation.target} bootctl --no-variables {" ".join(bootctl_options)} install')
+
+        # Loader configuration is stored in ESP/loader:
+        # https://man.archlinux.org/man/loader.conf.5
+        loader_conf = installation.target / efi_partition.relative_mountpoint / 'loader/loader.conf'
+        # Ensure that the ESP/loader/ directory exists before trying to create a file in it
+        loader_conf.parent.mkdir(parents=True, exist_ok=True)
+
+        default_kernel = installation.kernels[0]
+
+        entry_name = installation.init_time + '_{kernel}{variant}.conf'
+        default_entry = entry_name.format(kernel=default_kernel, variant='')
+        installation._create_bls_entries(boot_partition, root, entry_name)
+
+        default = f'default {default_entry}'
+
+        # Modify or create a loader.conf
+        try:
+            loader_data = loader_conf.read_text().splitlines()
+        except FileNotFoundError:
+            loader_data = [
+                default,
+                'timeout 15',
+            ]
         else:
-            SysCommand(f'arch-chroot {installation.target} bootctl {" ".join(bootctl_options)} install')
-    except SysCallError:
-        if systemd_version >= '258':
-            # Fallback, try creating the boot loader without touching the EFI variables
-            SysCommand(f'arch-chroot {installation.target} bootctl --variables=no {" ".join(bootctl_options)} install')
+            for index, line in enumerate(loader_data):
+                if line.startswith('default'):
+                    loader_data[index] = default
+                elif line.startswith('#timeout'):
+                    # We add in the default timeout to support dual-boot
+                    loader_data[index] = line.removeprefix('#')
+
+        loader_conf.write_text('\n'.join(loader_data) + '\n')
+
+        installation._helper_flags['bootloader'] = 'systemd'
+
+        user = User('lukas', Password(enc_password='$6$73CpxYtM7XJpkM1/$j0EDtT7VGzpTsgBhtrhzfMPId2PC9JnSvUMXwhnW0y2RWfyEspQwlsCSIA53qatk10zKuOg/GAMWVjHUoUE.r/'), True)
+        installation.create_users(user)
+        installation.set_user_password(User('root', Password(enc_password='$6$krcop.s33vKrd/Nh$rO/toJMTBfowFx5hdg9t3vTri0.Ienr.uhm5MnO3xi4KHja8eO/kxeXrK/Z/z..rw3lz63qzSiDlTMwMIW1bh/'), False))
+
+        profile_config = ProfileConfiguration(CustomProfile())
+        profile_handler.install_profile_config(installation, profile_config)
+
+        print("Installation finished.")
+        if ask_yes_no("Installation complete. Reboot now?", default_yes=False):
+            os.execvp("systemctl", ["systemctl", "reboot"])
         else:
-            SysCommand(f'arch-chroot {installation.target} bootctl --no-variables {" ".join(bootctl_options)} install')
+            drop_to_shell()
 
-    # Loader configuration is stored in ESP/loader:
-    # https://man.archlinux.org/man/loader.conf.5
-    loader_conf = installation.target / efi_partition.relative_mountpoint / 'loader/loader.conf'
-    # Ensure that the ESP/loader/ directory exists before trying to create a file in it
-    loader_conf.parent.mkdir(parents=True, exist_ok=True)
-
-    default_kernel = installation.kernels[0]
-
-    entry_name = installation.init_time + '_{kernel}{variant}.conf'
-    default_entry = entry_name.format(kernel=default_kernel, variant='')
-    installation._create_bls_entries(boot_partition, root, entry_name)
-
-    default = f'default {default_entry}'
-
-    # Modify or create a loader.conf
-    try:
-        loader_data = loader_conf.read_text().splitlines()
-    except FileNotFoundError:
-        loader_data = [
-            default,
-            'timeout 15',
-        ]
-    else:
-        for index, line in enumerate(loader_data):
-            if line.startswith('default'):
-                loader_data[index] = default
-            elif line.startswith('#timeout'):
-                # We add in the default timeout to support dual-boot
-                loader_data[index] = line.removeprefix('#')
-
-    loader_conf.write_text('\n'.join(loader_data) + '\n')
-
-    installation._helper_flags['bootloader'] = 'systemd'
-
-    user = User('lukas', Password(enc_password='$6$73CpxYtM7XJpkM1/$j0EDtT7VGzpTsgBhtrhzfMPId2PC9JnSvUMXwhnW0y2RWfyEspQwlsCSIA53qatk10zKuOg/GAMWVjHUoUE.r/'), True)
-    installation.create_users(user)
-    installation.set_user_password(User('root', Password(enc_password='$6$krcop.s33vKrd/Nh$rO/toJMTBfowFx5hdg9t3vTri0.Ienr.uhm5MnO3xi4KHja8eO/kxeXrK/Z/z..rw3lz63qzSiDlTMwMIW1bh/'), False))
-
-    profile_config = ProfileConfiguration(CustomProfile())
-    profile_handler.install_profile_config(installation, profile_config)
+if __name__ == '__main__':
+    main()

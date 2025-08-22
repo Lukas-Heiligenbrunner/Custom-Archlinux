@@ -1,0 +1,19 @@
+[Unit]
+Description=Run install-me.py on tty1
+Conflicts=getty@tty1.service
+After=systemd-user-sessions.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env python3 /root/install-me.py
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=no
+TTYVHangup=no
+TTYVTDisallocate=no
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
