@@ -131,6 +131,9 @@ class CustomProfile(XorgProfile):
             'gsettings set org.gnome.desktop.background picture-uri-dark "file:///home/lukas/Pictures/background.png"',
             'gsettings set org.gnome.desktop.interface color-scheme "prefer-dark"',
 
+            # enable gnome experimental features
+            'gsettings set org.gnome.mutter experimental-features "[\'scale-monitor-framebuffer\', \'variable-refresh-rate\']"',
+
             # set dash favorite-apps
             'gsettings set org.gnome.shell favorite-apps "[\'firefox.desktop\', \'org.gnome.Console.desktop\', \'org.gnome.Nautilus.desktop\', \'steam.desktop\', \'net.nokyan.Resources.desktop\']"',
 
