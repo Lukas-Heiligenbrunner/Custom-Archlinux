@@ -237,7 +237,7 @@ class CustomProfile(XorgProfile):
             'rustup', 'rustrover', 'rustrover-jre', 'intellij-idea-ultimate-edition',
             'networkmanager', 'lib32-mesa', 'mesa', 'vulkan-radeon', 'lib32-vulkan-radeon',
             'htop', 'pycharm-professional', 'mangohud', 'lib32-mangohud', 'pipewire', 'pipewire-audio', 'wireplumber',
-            'archiso', 'just',
+            'archiso', 'just', 'uvtools-bin',
             # todo sound stack
         ]
 
