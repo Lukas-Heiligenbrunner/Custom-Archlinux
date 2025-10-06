@@ -17,32 +17,21 @@ This project creates a bootable Arch Linux ISO (`archlinux-baseline`) with:
 To build this ISO, you need:
 - An Arch Linux system (or Arch-based distribution)
 - `archiso` package installed: `sudo pacman -S archiso`
-- `just` command runner (optional, for using Justfile): `sudo pacman -S just`
+- `just` command runner: `sudo pacman -S just`
 - Sufficient disk space (~10GB for build artifacts)
 - Root/sudo privileges
 
 ## Building the ISO
 
-### Method 1: Using the build script
-
-```bash
-./build.sh
-```
-
-This will:
-1. Remove previous `work` and `out` directories
-2. Build the ISO using `mkarchiso`
-3. Output the ISO to the `out/` directory
-
-### Method 2: Using Just
+Use the Justfile to build the ISO:
 
 ```bash
 just build
 ```
 
-This uses the Justfile to build with a different work directory (`../work`).
-
-### Build Output
+This will:
+1. Build the ISO using `mkarchiso`
+2. Output the ISO to the `out/` directory
 
 After building, you'll find the ISO file in the `out/` directory:
 ```
@@ -53,20 +42,29 @@ out/archlinux-baseline-YYYY.MM.DD-x86_64.iso
 
 1. **Boot from the ISO** - Boot the generated ISO on your target machine (requires UEFI boot mode)
 
-2. **Run the installer** - Once booted, run the automated installer as root:
-   ```bash
-   sudo /root/install-me.py
-   ```
+2. **Automatic Installation** - The ISO boots into a TTY (text console) and automatically runs the `install-me.py` installation script
 
-3. **Disk Selection** - The installer will automatically detect and select the best disk:
+3. **Disk Selection** - The installer automatically detects and selects the most relevant disk:
    - Priority: NVMe > SSD > Largest disk
    - **WARNING**: The installer will WIPE the selected disk completely
 
-4. **Confirmation** - Confirm the installation when prompted
+4. **Confirmation** - Review the detected disk and confirm the installation when prompted
 
-5. **Reboot** - After installation completes, reboot into your new system
+5. **Installation Process** - The script will install and configure the complete system as described below
+
+6. **Reboot** - After installation completes, reboot into your new system
+
+### Manual Installation
+
+If you need to run the installer manually (e.g., after canceling the automatic run):
+
+```bash
+sudo /root/install-me.py
+```
 
 ## What the Installer Configures
+
+The `install-me.py` script automatically configures a complete Arch Linux system with the following settings:
 
 ### Partitioning Scheme
 
