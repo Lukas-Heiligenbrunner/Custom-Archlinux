@@ -146,6 +146,9 @@ class CustomProfile(XorgProfile):
             # Show seconds in top bar clock
             'gsettings set org.gnome.desktop.interface clock-show-seconds true',
 
+            # battery in percent
+            'gsettings set org.gnome.desktop.interface show-battery-percentage true',
+
             # nautilus settings
             'gsettings set org.gnome.nautilus.preferences default-folder-viewer "list-view"',
             'gsettings set org.gnome.nautilus.preferences show-create-link true',
