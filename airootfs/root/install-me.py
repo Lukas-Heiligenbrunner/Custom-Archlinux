@@ -230,16 +230,19 @@ class CustomProfile(XorgProfile):
             'totem',
             'xdg-desktop-portal-gnome',
             'xdg-user-dirs-gtk',
+            'smartmontools',
             # custom gnome stuff
             'gnome-shell-extensions', 'gnome-browser-connector',
             'gnome-shell-extension-vitals', 'gnome-shell-extension-tiling-assistant',
             #'gnome-shell-extension-tiling-assistant',
             # custom additional ones
-            'nano', 'wget', 'git', 'firefox', 'vlc', 'gnome-boxes', 'openscad', 'prusa-slicer', 'gimp',
+            'nano', 'wget', 'git', 'firefox',
+            'vlc', 'vlc-plugin-ffmpeg', 'vlc-plugin-mpeg2', 'vlc-plugin-matroska', 'vlc-plugin-x264', 'vlc-plugin-x265',
+            'gnome-boxes', 'openscad', 'prusa-slicer', 'gimp',
             'zed', 'resources', 'steam', 'discord', 'blender', 'obs-studio', 'kicad', 'less',
             'rustup', 'rustrover', 'rustrover-jre', 'intellij-idea-ultimate-edition',
-            'networkmanager', 'lib32-mesa', 'mesa', 'vulkan-radeon', 'lib32-vulkan-radeon',
-            'htop', 'pycharm-professional', 'mangohud', 'lib32-mangohud', 'pipewire', 'pipewire-audio', 'wireplumber',
+            'networkmanager', 'lib32-mesa', 'mesa', 'vulkan-radeon', 'lib32-vulkan-radeon', 'vulkan-mesa-layers', 'mesa-utils',
+            'htop', 'pycharm-professional', 'mangohud', 'lib32-mangohud','mangojuice', 'pipewire', 'pipewire-audio', 'wireplumber',
             'archiso', 'just', 'uvtools-bin',
             # todo sound stack
         ]
@@ -248,6 +251,42 @@ class CustomProfile(XorgProfile):
     @override
     def default_greeter_type(self) -> GreeterType:
         return GreeterType.Gdm
+
+def sync_time_and_keyring():
+    print("Synchronizing system time and initializing pacman keyring...")
+
+    # Enable NTP (systemd-timesyncd)
+    try:
+        subprocess.run(["timedatectl", "set-ntp", "true"], check=True)
+    except Exception as e:
+        print(f"Warning: failed to enable NTP: {e}")
+
+    # Force an immediate time sync (useful in live ISO)
+    try:
+        subprocess.run(["timedatectl", "set-timezone", "UTC"], check=True)
+        subprocess.run(["hwclock", "--systohc"], check=False)
+    except Exception as e:
+        print(f"Warning: time sync helper failed: {e}")
+
+    # Show time for debugging
+    try:
+        subprocess.run(["timedatectl", "status"], check=False)
+    except Exception:
+        pass
+
+    # Initialize and populate pacman keyring
+    try:
+        subprocess.run(["pacman-key", "--init"], check=True)
+        subprocess.run(["pacman-key", "--populate", "archlinux"], check=True)
+        subprocess.run(["pacman-key", "--refresh-keys"], check=False)
+    except Exception as e:
+        print(f"Warning: pacman-key setup failed: {e}")
+
+    # Make sure keyring package itself is up to date (important on old ISOs)
+    try:
+        subprocess.run(["pacman", "-Sy", "--noconfirm", "archlinux-keyring"], check=True)
+    except Exception as e:
+        print(f"Warning: failed to update archlinux-keyring: {e}")
 
 def main():
     ensure_root()
@@ -282,6 +321,8 @@ def main():
 
     if not device:
         raise ValueError('No device found for given path')
+
+    sync_time_and_keyring()
 
     # create a new modification for the specific device
     device_modification = DeviceModification(device, wipe=True)
