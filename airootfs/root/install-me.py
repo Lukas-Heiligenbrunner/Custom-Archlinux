@@ -9,7 +9,7 @@ from archinstall.lib.disk.filesystem import FilesystemHandler
 from archinstall.lib.installer import Installer
 from archinstall.lib.models import Repository, LocaleConfiguration, CustomRepository, MirrorConfiguration, \
     FilesystemType, DeviceModification, PartitionModification, ModificationStatus, PartitionType, PartitionFlag, \
-    DiskLayoutConfiguration, DiskLayoutType, Size, Unit, ProfileConfiguration
+    DiskLayoutConfiguration, DiskLayoutType, Size, Unit, ProfileConfiguration, Bootloader
 from archinstall.lib.models.mirrors import SignCheck, SignOption
 from archinstall.lib.models.users import Password, User
 from archinstall.lib.profile.profiles_handler import profile_handler
@@ -393,74 +393,7 @@ def main():
         installation.set_mirrors(MirrorConfiguration(custom_repositories=[custom_repo]))
 
         # Install systemd-boot (requires UEFI boot mode and ESP mounted at /mnt/arch/boot)
-        #installation.add_bootloader(Bootloader.Systemd)
-        # debug('Installing systemd bootloader')
-
-        efi_partition = installation._get_efi_partition()
-        boot_partition = installation._get_boot_partition()
-        root = installation._get_root()
-        installation.pacman.strap('efibootmgr')
-
-        if not SysInfo.has_uefi():
-            raise HardwareIncompatibilityError
-
-        if not efi_partition:
-            raise ValueError('Could not detect EFI system partition')
-        elif not efi_partition.mountpoint:
-            raise ValueError('EFI system partition is not mounted')
-
-        bootctl_options = []
-        systemd_version = '257'  # This works as a safety workaround for this hot-fix
-
-        # Install the boot loader
-        try:
-            # Force EFI variables since bootctl detects arch-chroot
-            # as a container environemnt since v257 and skips them silently.
-            # https://github.com/systemd/systemd/issues/36174
-            if systemd_version >= '258':
-                SysCommand(f'arch-chroot {installation.target} bootctl --variables=yes {" ".join(bootctl_options)} install')
-            else:
-                SysCommand(f'arch-chroot {installation.target} bootctl {" ".join(bootctl_options)} install')
-        except SysCallError:
-            if systemd_version >= '258':
-                # Fallback, try creating the boot loader without touching the EFI variables
-                SysCommand(f'arch-chroot {installation.target} bootctl --variables=no {" ".join(bootctl_options)} install')
-            else:
-                SysCommand(f'arch-chroot {installation.target} bootctl --no-variables {" ".join(bootctl_options)} install')
-
-        # Loader configuration is stored in ESP/loader:
-        # https://man.archlinux.org/man/loader.conf.5
-        loader_conf = installation.target / efi_partition.relative_mountpoint / 'loader/loader.conf'
-        # Ensure that the ESP/loader/ directory exists before trying to create a file in it
-        loader_conf.parent.mkdir(parents=True, exist_ok=True)
-
-        default_kernel = installation.kernels[0]
-
-        entry_name = installation.init_time + '_{kernel}{variant}.conf'
-        default_entry = entry_name.format(kernel=default_kernel, variant='')
-        installation._create_bls_entries(boot_partition, root, entry_name)
-
-        default = f'default {default_entry}'
-
-        # Modify or create a loader.conf
-        try:
-            loader_data = loader_conf.read_text().splitlines()
-        except FileNotFoundError:
-            loader_data = [
-                default,
-                'timeout 15',
-            ]
-        else:
-            for index, line in enumerate(loader_data):
-                if line.startswith('default'):
-                    loader_data[index] = default
-                elif line.startswith('#timeout'):
-                    # We add in the default timeout to support dual-boot
-                    loader_data[index] = line.removeprefix('#')
-
-        loader_conf.write_text('\n'.join(loader_data) + '\n')
-
-        installation._helper_flags['bootloader'] = 'systemd'
+        installation.add_bootloader(Bootloader.Systemd)
 
         user = User('lukas', Password(enc_password='$6$73CpxYtM7XJpkM1/$j0EDtT7VGzpTsgBhtrhzfMPId2PC9JnSvUMXwhnW0y2RWfyEspQwlsCSIA53qatk10zKuOg/GAMWVjHUoUE.r/'), True)
         installation.create_users(user)
